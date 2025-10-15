@@ -2,41 +2,33 @@
 
 Utilities that augment the Codex CLI workflow.
 
-## Tools
-
-- `list_codex_sessions.py` – Lists recent Codex CLI sessions scoped to the current project. Supports interactive selection (arrow keys / `j` `k`) and will run `codex resume <id>` for the chosen session.
-
 ## Installation
 
-1. Ensure Python 3.10+ is available (`python3 --version`).
-2. Clone the repository into a location on your machine:
-   ```bash
-   git clone git@github.com:svendvd/codex-addons.git
-   cd codex-addons
-   ```
-3. (Optional) Install dependencies into a virtual environment; the script uses only the Python standard library.
+Grab the latest tag from the repository and install it directly with `pip` (or `pipx`). Example for version `0.2.0`:
 
-### Running the tool
-
-Run the script directly from the repository root:
 ```bash
-python3 list_codex_sessions.py
+pip install --upgrade git+https://github.com/svendvd/codex-addons.git@v0.2.0
 ```
 
-Useful flags:
-- `--plain` prints matches without launching the interactive selector.
-- `--no-resume` skips executing `codex resume` and prints the command instead.
-- `--git` limits the list to sessions that match your current Git branch (and repository when known), so alternate worktrees stay focused on the same branch history.
+After installation a `codex-sessions` command is available automatically. You can still run the script directly:
 
-### Creating a shell alias
-
-Add the following line to your shell configuration (e.g. `~/.zshrc`):
 ```bash
-alias codex-sessions='python3 ~/codex_addon/list_codex_sessions.py'
-```
-Reload your shell (`source ~/.zshrc`) and invoke the tool anywhere with:
-```bash
-codex-sessions
+python3 -m codex_addons.list_sessions
 ```
 
-Adjust the path in the alias if you moved the repository.
+## Tools
+
+- `list_sessions` – Lists recent Codex CLI sessions scoped to the current project. Supports interactive selection (arrow keys / `j` `k`) and will run `codex resume <id>` for the chosen session. Use `--plain` for non-interactive mode, `--no-resume` to skip executing the command, and `--git` to restrict results to sessions recorded on the current Git branch.
+
+## Development
+
+```bash
+pip install -e .
+python3 -m codex_addons.list_sessions --help
+```
+
+## Release workflow
+
+1. Update `codex_addons/__init__.py` and `pyproject.toml` with the new version.
+2. Commit the changes and tag them (e.g. `git tag v0.3.0`).
+3. Push the tag (`git push origin --tags`). The GitHub release workflow builds the wheel and attaches it to the GitHub release so users can upgrade with `pip install --upgrade git+https://github.com/svendvd/codex-addons.git@v0.3.0`.

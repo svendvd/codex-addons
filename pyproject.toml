@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=67", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codex-addons"
+version = "0.2.0"
+description = "Utilities that augment the Codex CLI workflow"
+readme = "README.md"
+authors = [{ name = "Sven", email = "dev@svendvd.com" }]
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["codex", "cli", "productivity"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/svendvd/codex-addons"
+Source = "https://github.com/svendvd/codex-addons"
+Issues = "https://github.com/svendvd/codex-addons/issues"
+
+[project.scripts]
+codex-sessions = "codex_addons.list_sessions:main"
+
+[tool.setuptools.package-data]
+"codex_addons" = ["py.typed"]
