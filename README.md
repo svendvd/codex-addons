@@ -26,7 +26,7 @@ python3 list_codex_sessions.py
 Useful flags:
 - `--plain` prints matches without launching the interactive selector.
 - `--no-resume` skips executing `codex resume` and prints the command instead.
-- `--git` includes sessions that share your current Git branch and repository, so alternate worktrees surface their matching history too.
+- `--git` limits the list to sessions that match your current Git branch (and repository when known), so alternate worktrees stay focused on the same branch history.
 
 ### Creating a shell alias
 

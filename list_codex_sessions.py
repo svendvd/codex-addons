@@ -284,15 +284,18 @@ def gather_summaries(
                 summary.git_repository = metadata.repository
 
         path_match = is_relevant_session(summary.cwd, current_dir)
-        branch_match = False
-        repo_match = True
 
-        if git_context and git_context.branch:
-            branch_match = summary.git_branch == git_context.branch
-            if branch_match:
-                repo_match = repo_matches(summary.git_repository, git_context.repository)
+        include = path_match
 
-        if not path_match and not (branch_match and repo_match):
+        if git_context:
+            if git_context.branch:
+                branch_ok = summary.git_branch == git_context.branch
+                repo_ok = repo_matches(summary.git_repository, git_context.repository)
+                include = branch_ok and repo_ok
+            elif git_context.repository:
+                include = path_match or repo_matches(summary.git_repository, git_context.repository)
+
+        if not include:
             continue
 
         summaries.append(summary)
