@@ -10,6 +10,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Iterator, List, Optional
 
@@ -31,6 +32,14 @@ class SessionSummary:
     file_path: Path
     prompt: str
     session_id: str
+    git_branch: Optional[str] = None
+    git_repository: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class GitContext:
+    branch: Optional[str]
+    repository: Optional[str]
 
 
 def find_session_files(root: Path) -> Iterator[Path]:
@@ -136,6 +145,7 @@ def load_session(file_path: Path) -> Optional[SessionSummary]:
     raw_cwd = payload.get("cwd")
     raw_timestamp = payload.get("timestamp") or session_meta.get("timestamp")
     session_id = payload.get("id") or session_meta.get("id", "")
+    git_info = payload.get("git", {})
 
     if not raw_cwd or not raw_timestamp:
         return None
@@ -155,26 +165,136 @@ def load_session(file_path: Path) -> Optional[SessionSummary]:
         file_path=file_path,
         prompt=prompt,
         session_id=str(session_id),
+        git_branch=git_info.get("branch"),
+        git_repository=git_info.get("repository_url"),
     )
+
+
+def normalize_repo_identifier(identifier: Optional[str]) -> Optional[str]:
+    if not identifier:
+        return None
+    value = identifier.strip()
+    if not value:
+        return None
+
+    if value.startswith("git@"):
+        value = value[4:]
+        if ":" in value:
+            user, rest = value.split(":", 1)
+            value = f"{user}/{rest}"
+    elif "://" in value:
+        value = value.split("://", 1)[1]
+
+    if value.startswith("~") or value.startswith("/"):
+        value = str(Path(value).expanduser().resolve())
+    else:
+        value = value.strip("/")
+
+    if value.endswith(".git"):
+        value = value[:-4]
+
+    return value.lower()
+
+
+@lru_cache(maxsize=None)
+def detect_git_metadata(path_str: str) -> GitContext:
+    path = Path(path_str)
+    if not path.exists():
+        return GitContext(branch=None, repository=None)
+
+    branch: Optional[str] = None
+    repository: Optional[str] = None
+
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        branch = result.stdout.strip() or None
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        branch = None
+
+    try:
+        remote_result = subprocess.run(
+            ["git", "-C", str(path), "config", "--get", "remote.origin.url"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        repository = remote_result.stdout.strip() or None
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        repository = None
+
+    if repository is None:
+        try:
+            top_result = subprocess.run(
+                ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            repository = top_result.stdout.strip() or None
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            repository = None
+
+    return GitContext(branch=branch, repository=repository)
+
+
+def repo_matches(session_repo: Optional[str], context_repo: Optional[str]) -> bool:
+    if not context_repo:
+        return True
+    if not session_repo:
+        return True
+    return normalize_repo_identifier(session_repo) == normalize_repo_identifier(context_repo)
 
 
 def format_summary_line(summary: SessionSummary) -> str:
     local_ts = summary.timestamp.astimezone()
+    branch_segment = f" [{summary.git_branch}]" if summary.git_branch else ""
     prompt_line = summarize_prompt(summary.prompt)
     return (
         f"{local_ts:%Y-%m-%d %H:%M:%S %Z} | {summary.session_id} | "
-        f"{summary.cwd} | {prompt_line}"
+        f"{summary.cwd}{branch_segment} | {prompt_line}"
     )
 
 
-def gather_summaries(current_dir: Path, limit: Optional[int]) -> List[SessionSummary]:
+def gather_summaries(
+    current_dir: Path,
+    limit: Optional[int],
+    git_context: Optional[GitContext],
+    require_git_lookup: bool,
+) -> List[SessionSummary]:
     summaries: List[SessionSummary] = []
+
     for file_path in find_session_files(SESSIONS_ROOT):
         summary = load_session(file_path)
         if not summary:
             continue
-        if not is_relevant_session(summary.cwd, current_dir):
+
+        if git_context and require_git_lookup and (
+            summary.git_branch is None
+            or (git_context.repository and summary.git_repository is None)
+        ):
+            metadata = detect_git_metadata(str(summary.cwd))
+            if summary.git_branch is None:
+                summary.git_branch = metadata.branch
+            if summary.git_repository is None:
+                summary.git_repository = metadata.repository
+
+        path_match = is_relevant_session(summary.cwd, current_dir)
+        branch_match = False
+        repo_match = True
+
+        if git_context and git_context.branch:
+            branch_match = summary.git_branch == git_context.branch
+            if branch_match:
+                repo_match = repo_matches(summary.git_repository, git_context.repository)
+
+        if not path_match and not (branch_match and repo_match):
             continue
+
         summaries.append(summary)
 
     summaries.sort(key=lambda item: item.timestamp, reverse=True)
@@ -265,14 +385,43 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Do not execute `codex resume`; just print the command.",
     )
+    parser.add_argument(
+        "--git",
+        action="store_true",
+        help="Include sessions from other directories that share the current Git branch.",
+    )
     return parser.parse_args()
+
+
+def detect_current_git_context(path: Path) -> Optional[GitContext]:
+    metadata = detect_git_metadata(str(path))
+    if not metadata.branch and not metadata.repository:
+        return None
+    return metadata
 
 
 def main() -> int:
     args = parse_args()
     current_dir = Path(os.getcwd()).resolve()
 
-    summaries = gather_summaries(current_dir, args.limit)
+    git_context: Optional[GitContext] = None
+    require_git_lookup = args.git
+
+    if args.git:
+        git_context = detect_current_git_context(current_dir)
+        if git_context is None:
+            print(
+                "Warning: Unable to determine Git branch; falling back to path-based matching.",
+                file=sys.stderr,
+            )
+            require_git_lookup = False
+
+    summaries = gather_summaries(
+        current_dir=current_dir,
+        limit=args.limit,
+        git_context=git_context,
+        require_git_lookup=require_git_lookup,
+    )
 
     if not summaries:
         print("No sessions found for this directory.")

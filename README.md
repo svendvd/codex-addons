@@ -23,13 +23,16 @@ Run the script directly from the repository root:
 python3 list_codex_sessions.py
 ```
 
-Use `--plain` to print the list without launching the interactive selector, or `--no-resume` to skip running the resume command automatically.
+Useful flags:
+- `--plain` prints matches without launching the interactive selector.
+- `--no-resume` skips executing `codex resume` and prints the command instead.
+- `--git` includes sessions that share your current Git branch and repository, so alternate worktrees surface their matching history too.
 
 ### Creating a shell alias
 
 Add the following line to your shell configuration (e.g. `~/.zshrc`):
 ```bash
-alias codex-sessions='python3 ~/codex-addons/list_codex_sessions.py'
+alias codex-sessions='python3 ~/codex_addon/list_codex_sessions.py'
 ```
 Reload your shell (`source ~/.zshrc`) and invoke the tool anywhere with:
 ```bash
