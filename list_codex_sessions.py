@@ -341,7 +341,11 @@ def interactive_select(summaries: List[SessionSummary]) -> Optional[SessionSumma
             stdscr.addstr(height - 1, 0, status[: width - 1])
             stdscr.refresh()
 
-            key = stdscr.getch()
+            try:
+                key = stdscr.getch()
+            except KeyboardInterrupt:
+                return None
+
             if key in (curses.KEY_UP, ord("k")):
                 current = (current - 1) % total
             elif key in (curses.KEY_DOWN, ord("j")):
@@ -355,7 +359,10 @@ def interactive_select(summaries: List[SessionSummary]) -> Optional[SessionSumma
             elif key in (27, ord("q")):
                 return None
 
-    return curses.wrapper(_inner)
+    try:
+        return curses.wrapper(_inner)
+    except KeyboardInterrupt:
+        return None
 
 
 def run_codex_resume(session_id: str) -> int:
