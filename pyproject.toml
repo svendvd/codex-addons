@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codex-addons"
-version = "0.2.0"
+version = "0.3.0"
 description = "Utilities that augment the Codex CLI workflow"
 readme = "README.md"
 authors = [{ name = "Sven", email = "dev@svendvd.com" }]

@@ -307,7 +307,11 @@ def gather_summaries(
     return summaries
 
 
-def interactive_select(summaries: List[SessionSummary]) -> Optional[SessionSummary]:
+def interactive_select(
+    summaries: List[SessionSummary],
+    allow_delete: bool = False,
+    delete_handler=None,
+) -> Optional[SessionSummary]:
     import curses
 
     def _inner(stdscr):
@@ -316,6 +320,7 @@ def interactive_select(summaries: List[SessionSummary]) -> Optional[SessionSumma
         current = 0
         top = 0
         total = len(summaries)
+        status_message: Optional[str] = None
 
         while True:
             stdscr.erase()
@@ -341,7 +346,13 @@ def interactive_select(summaries: List[SessionSummary]) -> Optional[SessionSumma
                     stdscr.addstr(idx, 0, truncated)
 
             status = "↑/↓ select • Enter confirm • q to quit"
+            if allow_delete:
+                status += " • d delete"
             stdscr.addstr(height - 1, 0, status[: width - 1])
+
+            if status_message:
+                stdscr.addstr(height - 2, 0, status_message[: width - 1])
+                status_message = None
             stdscr.refresh()
 
             try:
@@ -359,6 +370,38 @@ def interactive_select(summaries: List[SessionSummary]) -> Optional[SessionSumma
                 current = min(current + visible, total - 1)
             elif key in (curses.KEY_ENTER, 10, 13):
                 return summaries[current]
+            elif allow_delete and key in (ord("d"), ord("D")) and delete_handler:
+                target = summaries[current]
+                prompt = f"Delete {target.session_id}? (y/n)"
+
+                while True:
+                    stdscr.addstr(height - 2, 0, " " * (width - 1))
+                    stdscr.addstr(height - 2, 0, prompt[: width - 1])
+                    stdscr.refresh()
+
+                    try:
+                        choice = stdscr.getch()
+                    except KeyboardInterrupt:
+                        status_message = "Deletion cancelled."
+                        break
+
+                    if choice in (ord("y"), ord("Y")):
+                        deleted, notice = delete_handler(target)
+                        status_message = notice
+                        if deleted:
+                            summaries.pop(current)
+                            total -= 1
+                            if total == 0:
+                                return None
+                            if current >= total:
+                                current = total - 1
+                        break
+
+                    if choice in (ord("n"), ord("N"), 27):
+                        status_message = "Deletion cancelled."
+                        break
+
+                continue
             elif key in (27, ord("q")):
                 return None
 
@@ -400,6 +443,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Include sessions from other directories that share the current Git branch.",
     )
+    parser.add_argument(
+        "--delete",
+        action="store_true",
+        help="Enable deleting sessions from the interactive picker (press d).",
+    )
     return parser.parse_args()
 
 
@@ -413,6 +461,10 @@ def detect_current_git_context(path: Path) -> Optional[GitContext]:
 def main() -> int:
     args = parse_args()
     current_dir = Path(os.getcwd()).resolve()
+
+    if args.delete and args.plain:
+        print("Deletion is only supported in interactive mode.", file=sys.stderr)
+        return 1
 
     git_context: Optional[GitContext] = None
     require_git_lookup = args.git
@@ -442,7 +494,20 @@ def main() -> int:
             print(format_summary_line(summary))
         return 0
 
-    selection = interactive_select(summaries)
+    def delete_session(summary: SessionSummary) -> tuple[bool, str]:
+        if not summary.file_path.exists():
+            return False, "Session file already removed."
+        try:
+            summary.file_path.unlink()
+        except OSError as exc:
+            return False, f"Failed to delete: {exc}"
+        return True, f"Deleted session {summary.session_id}"
+
+    selection = interactive_select(
+        summaries,
+        allow_delete=args.delete,
+        delete_handler=delete_session,
+    )
 
     if selection is None:
         return 0

@@ -14,6 +14,7 @@
 | Interactive picker | Arrow keys or `j`/`k` navigation with instant `codex resume <id>` execution. |
 | Plain-text output | Use `--plain` in scripts, shell prompts, or TUIs. |
 | Git branch filter | `--git` shows only sessions recorded on the current branch/repo, perfect for worktrees. |
+| In-place cleanup | Enable `--delete`, press `d`, then confirm with `y` to remove obsolete sessions without leaving the picker. |
 | Safety switches | `--no-resume` prints the command instead of running it. |
 | Lightweight install | Pure Python, no dependencies beyond the standard library. |
 
@@ -34,9 +35,12 @@ codex-sessions                   # interactive picker
 codex-sessions --plain --limit 5 # machine-friendly output
 codex-sessions --git             # only show sessions for the current Git branch
 codex-sessions --no-resume       # print, don’t execute, the resume command
+codex-sessions --delete          # enable deletion mode (press d on a session)
 ```
 
 Behind the scenes the CLI scans `~/.codex/sessions`, hoists the first meaningful user prompt, and formats results as `timestamp | session-id | cwd [branch] | prompt snippet`.
+
+Deletion mode works only in the TUI picker; once `--delete` is active press `d` and confirm with `y` to remove the highlighted session file immediately.
 
 ## Updating
 
