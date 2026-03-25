@@ -76,7 +76,7 @@ Run the interactive picker locally with `python3 list_codex_sessions.py` or hit 
 ## Release Workflow
 
 1. Bump the version in `codex_addons/__init__.py` and `pyproject.toml`.
-2. `git commit` the changes and tag them (`git tag v0.3.0`).
+2. `git commit` the changes and tag them (`git tag v0.4.0`).
 3. `git push origin main --tags` – GitHub Actions builds wheels via `.github/workflows/release.yml` and attaches them to the release so users can upgrade with a single pip command.
 
 ## Roadmap Ideas
