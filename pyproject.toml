@@ -25,6 +25,7 @@ Issues = "https://github.com/svendvd/codex-addons/issues"
 
 [project.scripts]
 codex-sessions = "codex_addons.list_sessions:main"
+codex-usage-status = "codex_addons.usage_status:main"
 
 [tool.setuptools.package-data]
-"codex_addons" = ["py.typed"]
+"codex_addons" = ["py.typed", "codex-usage-status.mjs"]
