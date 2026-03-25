@@ -5,8 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-const DAILY_BUDGET_PERCENT = 13;
-const DAILY_CUTOFF_HOUR = 17;
+const DEFAULT_DAILY_BUDGET_PERCENT = 13;
+const DEFAULT_DAILY_CUTOFF_HOUR = 17;
 const DEFAULT_SOURCE = 'exec';
 const HELP_TEXT = `Usage: codex-usage-status [options]
 
@@ -16,6 +16,10 @@ Options:
   --json                Print machine-readable JSON
   --show-paths          Include redacted Codex paths in JSON output
   --source=<name>       Rollout source to inspect (default: ${DEFAULT_SOURCE})
+  --daily-budget-percent=<n>
+                        Budget percent subtracted per remaining day (default: ${DEFAULT_DAILY_BUDGET_PERCENT})
+  --daily-cutoff-hour=<0-23>
+                        Local hour used to count remaining days (default: ${DEFAULT_DAILY_CUTOFF_HOUR})
   --codex-home=<path>   Override CODEX_HOME (default: $CODEX_HOME or ~/.codex)
   --help                Show this help message
 `;
@@ -58,6 +62,8 @@ function escapeSqlLiteral(value) {
 function parseArgs(argv) {
   const options = {
     codexHome: null,
+    dailyBudgetPercent: DEFAULT_DAILY_BUDGET_PERCENT,
+    dailyCutoffHour: DEFAULT_DAILY_CUTOFF_HOUR,
     json: false,
     showPaths: false,
     source: DEFAULT_SOURCE,
@@ -84,6 +90,16 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg.startsWith('--daily-budget-percent=')) {
+      options.dailyBudgetPercent = parseDailyBudgetPercent(arg.slice('--daily-budget-percent='.length));
+      continue;
+    }
+
+    if (arg.startsWith('--daily-cutoff-hour=')) {
+      options.dailyCutoffHour = parseDailyCutoffHour(arg.slice('--daily-cutoff-hour='.length));
+      continue;
+    }
+
     if (arg.startsWith('--codex-home=')) {
       options.codexHome = expandHomePath(arg.slice('--codex-home='.length));
       continue;
@@ -98,6 +114,22 @@ function parseArgs(argv) {
 function fail(message) {
   console.error(message);
   process.exit(1);
+}
+
+function parseDailyBudgetPercent(value) {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    fail(`invalid --daily-budget-percent value: ${value}`);
+  }
+  return parsed;
+}
+
+function parseDailyCutoffHour(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 23) {
+    fail(`invalid --daily-cutoff-hour value: ${value}`);
+  }
+  return parsed;
 }
 
 function resolveStateDbPath(codexHome) {
@@ -231,8 +263,8 @@ function buildStatus(options) {
   const secondaryResetAt = new Date(rateLimits.secondary.resets_at * 1000);
   const primaryRemainingPercent = roundPercent(Math.max(0, 100 - rateLimits.primary.used_percent));
   const secondaryRemainingPercent = roundPercent(Math.max(0, 100 - rateLimits.secondary.used_percent));
-  const daysLeft = countFutureDailyCutoffs(now, secondaryResetAt, DAILY_CUTOFF_HOUR);
-  const rawDailyLeftExtra = secondaryRemainingPercent - daysLeft * DAILY_BUDGET_PERCENT;
+  const daysLeft = countFutureDailyCutoffs(now, secondaryResetAt, options.dailyCutoffHour);
+  const rawDailyLeftExtra = secondaryRemainingPercent - daysLeft * options.dailyBudgetPercent;
   const dailyLeftExtraPercent = roundPercent(Math.max(0, rawDailyLeftExtra));
 
   const status = {
@@ -255,8 +287,9 @@ function buildStatus(options) {
       resets_at: rateLimits.secondary.resets_at,
       resets_at_local: formatLocalDate(secondaryResetAt),
       window_duration_mins: rateLimits.secondary.window_minutes ?? null,
-      days_left_at_17_cutoff: daysLeft,
-      daily_budget_percent: DAILY_BUDGET_PERCENT,
+      days_left_at_daily_cutoff: daysLeft,
+      daily_budget_percent: options.dailyBudgetPercent,
+      daily_cutoff_hour: options.dailyCutoffHour,
       daily_left_extra_percent: dailyLeftExtraPercent,
       daily_left_extra_raw_percent: roundPercent(rawDailyLeftExtra),
     },
@@ -275,8 +308,9 @@ function buildStatus(options) {
 
 function printHuman(status) {
   const formulaLeft = formatPercent(status.secondary.remaining_percent);
-  const daysLeft = status.secondary.days_left_at_17_cutoff;
+  const daysLeft = status.secondary.days_left_at_daily_cutoff;
   const formulaResult = formatPercent(status.secondary.daily_left_extra_percent);
+  const cutoffHour = status.secondary.daily_cutoff_hour;
 
   console.log(`source: ${status.source}`);
   console.log(`limit bucket: ${status.limit_id ?? 'unknown'}${status.limit_name ? ` (${status.limit_name})` : ''}`);
@@ -284,7 +318,7 @@ function printHuman(status) {
   console.log(`checked: ${status.checked_at_local}`);
   console.log(`primary: ${formatPercent(status.primary.used_percent)}% used, ${status.primary.window_duration_mins ?? '?'} min window, reset ${status.primary.resets_at_local}`);
   console.log(`secondary: ${formatPercent(status.secondary.used_percent)}% used, ${formatPercent(status.secondary.remaining_percent)}% left, ${status.secondary.window_duration_mins ?? '?'} min window, reset ${status.secondary.resets_at_local}`);
-  console.log(`days_left_until_17h_cutoff: ${daysLeft}`);
+  console.log(`days_left_until_${cutoffHour}h_cutoff: ${daysLeft}`);
   console.log(`formula: ${formulaLeft} - ${daysLeft} * ${status.secondary.daily_budget_percent} = ${formulaResult}`);
   console.log(`daily_left_extra: ${formulaResult}%`);
 }

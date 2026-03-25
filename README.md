@@ -45,12 +45,15 @@ codex-sessions --no-resume       # print, don’t execute, the resume command
 codex-usage-status               # human-readable rate-limit summary for source=exec
 codex-usage-status --json        # machine-readable status payload
 codex-usage-status --source=my-source # inspect a non-default rollout source
+codex-usage-status --daily-budget-percent=10 --daily-cutoff-hour=20
 codex-usage-status --show-paths --json
 ```
 
 Behind the scenes the CLI scans `~/.codex/sessions`, hoists the first meaningful user prompt, and formats results as `timestamp | session-id | cwd [branch] | prompt snippet`.
 
 `codex-usage-status` resolves the latest Codex state database inside `CODEX_HOME` (or `~/.codex`), follows the latest rollout for the selected source, and reads the newest `token_count` event with `rate_limits`.
+
+The daily-left formula is configurable through `--daily-budget-percent` and `--daily-cutoff-hour`, so you can tune the subtraction logic without editing the script.
 
 The JSON output deliberately excludes absolute filesystem paths. If you need troubleshooting details, add `--show-paths`; the command then emits `~`-redacted paths instead of raw home-directory locations.
 
